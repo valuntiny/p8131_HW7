@@ -1,0 +1,146 @@
+---
+title: "HW7_answer"
+author: "Guojing Wu"
+date: "4/15/2019"
+output:
+    pdf_document:
+    highlight: default
+    number_sections: true
+    citation_package:
+    keep_tex: false
+    fig_caption: true
+    latex_engine: pdflatex
+fontsize: 10pt
+geometry: margin=1in
+bibliography:
+biblio-style:
+header-includes:
+- \usepackage{indentfirst}
+- \usepackage{graphicx}
+- \usepackage{geometry}
+- \usepackage{subfigure}
+- \usepackage{amsmath}
+- \usepackage{listings}
+- \usepackage{tikz}
+- \usetikzlibrary{matrix}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, comment = "")
+library(tidyverse)
+library(grid)
+library(gridExtra)
+library(nlme)
+data.poli <- read.csv("HW7-politeness_data.csv", sep = ",")
+```
+
+## Problem 
+
+### 1) Exploratory analysis
+
+```{r, dpi = 300}
+plot.gender <- data.poli %>% 
+  ggplot(aes(x = gender, y = frequency)) +
+  geom_boxplot()
+
+plot.atti <- data.poli %>% 
+  ggplot(aes(x = attitude, y = frequency)) +
+  geom_boxplot()
+
+grid.arrange(plot.gender, plot.atti, ncol = 2)
+```
+
+The boxplot shows that there are differencies of pitch between male and female and between formal and informal
+
+### 2) Fixed effect model with random intercept
+
+```{r}
+LMM1 <- lme(frequency ~ gender + attitude, data = data.poli, random = ~1 | subject, method = 'REML')
+```
+
+The covariance matrix for a subject $Y_{i}$ is
+$$
+cov(Y_{i}) = 
+\begin{pmatrix}
+  \sigma_{b}^{2} + \sigma^{2} & \sigma_{b}^{2} & ... & \sigma_{b}^{2} \\
+  \sigma_{b}^{2} & \sigma_{b}^{2} + \sigma^{2} &... & \sigma_{b}^{2} \\
+  ... &  &  &  \\
+  \sigma_{b}^{2} & \sigma_{b}^{2} & ...  & \sigma_{b}^{2} + \sigma^{2} \\
+\end{pmatrix}
+$$
+
+with $\sigma_{b}^{2}$ = `r VarCorr(LMM1)[1]`, $\sigma^{2}$ = `r VarCorr(LMM1)[2]`.
+
+And the covariance matrix for REML is:
+
+```{r}
+vcov(LMM1) %>% knitr::kable()
+```
+
+The BLUPs for subject-specific intercept
+
+```{r}
+random.effects(LMM1) %>% knitr::kable()
+```
+
+The residuals are:
+
+```{r, dpi = 300}
+# residual
+resid.mat <- matrix(as.numeric(data.poli$frequency - fitted(LMM1)), nrow = 14, ncol = 6)
+colnames(resid.mat) = rownames(random.effects(LMM1))
+resid.mat %>% knitr::kable()
+
+plot(density(as.numeric(resid.mat)), xlab = "residual", main = "residual distribution")
+```
+
+### 3) Fixed effects model with intercepts for different subjects.
+
+```{r}
+# interaction term
+LMM.1 <- lme(frequency ~ gender + attitude, data = data.poli, random = ~1 | subject, method = 'ML')
+LMM.2 <- lme(frequency ~ gender * attitude, data = data.poli, random = ~1 | subject, method = 'ML')
+res.inter <- anova(LMM.1, LMM.2)
+```
+
+For likelihood ratio test, we use `ML` instead of `REML`, and then doing ANOVA. The pvalue = `r round(res.inter[[length(res.inter)]][2], 4)`, so in this case, we fail to reject the null hypothesis and state that the interaction term is not significantly associated with pitch.
+
+### 4) Fixed effect model with random intercept and random slope
+
+Consider the model form is 
+$$
+\begin{split}
+Y_{i,j} 
+&= \beta_{1} + \beta_{2}\cdot gender_{i,j} + \beta_{3}\cdot attitude_{i,j} + b_{1,i} + b_{2,i}attitude_{i,j} + \epsilon_{i,j} \\
+&= (\beta_{1} + b_{1,i}) + \beta_{2}\cdot gender_{i,j} + (\beta_{3} + b_{2,i})\cdot attitude_{i,j} + \epsilon_{i,j}
+\end{split}
+$$
+where $b_{1,i} \sim N(0, g_{11})$, $b_{2,i} \sim N(0, g_{22})$, $cov(b_{1,i}, b_{2,i}) = g_{12}$, $\epsilon_{i,j} \sim N(0, \sigma^{2})$, and $(b_{1,i}, b_{2,i})^{T}$ and $\epsilon$ are assumed to be independent.
+
+```{r}
+LMM2 <- lme(frequency ~ gender + attitude, random = ~ 1 + attitude | subject, data = data.poli)
+```
+
+To compute the covariance structure, the $g_{11}, g_{12}, g_{22}, \sigma$ can be obtained from below:
+
+```{r}
+VarCorr(LMM2) %>% knitr::kable()
+```
+
+The fixed effect is:
+
+```{r}
+fixed.effects(LMM2) %>% knitr::kable()
+```
+
+The random effect is:
+
+```{r}
+random.effects(LMM2) %>% knitr::kable()
+```
+
+The BLUP for the first female subject in scenario 1 with polite attitude is `r fitted(LMM2)[1]`.
+
+## Code
+```{r, ref.label=knitr::all_labels(),echo=TRUE,eval=FALSE}
+```
